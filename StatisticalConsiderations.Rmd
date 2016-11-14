@@ -1,0 +1,84 @@
+---
+title: "StatisticalConsiderations"
+author: "Levi Waldron"
+date: "August 9, 2016"
+output:
+  html_document: default
+  html_notebook:
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache=TRUE)
+```
+
+# Simple vs complex models
+
+```{r}
+set.seed(1)
+df = data.frame(x=-5:5)
+df$y = 10 - df$x^2 + rnorm(length(df$x), sd=3)
+myspline = spline(df$x, df$y, n=30)
+lm1 = lm(y ~ x, data=df)
+lm2 = lm(y~poly(x, 2), data=df)
+mylinear = data.frame(x=myspline$x, y=predict(lm1, newdata=myspline))
+myquadratic = data.frame(x=myspline$x, y=predict(lm2, newdata=myspline))
+```
+
+```{r overunderfittingplot}
+plot(y ~ x, data=df, ylim=c(-17, 13), 
+     xlab="Predictor / Independent Variable", ylab="Response / Dependent Variable")
+lines(mylinear, lty=2)
+lines(myquadratic, lw=3)
+lines(myspline)
+legend("bottom", legend=c("under-fit", "optimal fit", "over-fit"), 
+       lty=c(2, 1, 1), lw=c(1, 3, 1))
+```
+
+
+# Gun violence
+```{r, echo=FALSE, results="hide"}
+download.file("https://www.openintro.org/stat/data/gun_violence.csv",
+                         destfile="gun_violence.csv")
+```
+
+```{r, echo=FALSE}
+gun=read.csv("gun_violence.csv")
+gun$hdi_category = factor(gun$hdi_category, levels=c("low", "medium", "high", "very high"))
+```
+
+```{r, results="asis", echo=FALSE}
+stargazer::stargazer(gun, digits=1, ci=TRUE, type="html")
+```
+
+```{r, echo=FALSE}
+library(directlabels)
+mych = c(1, 2, 5, 20)
+mycex = c(0.5, 0.5, 0.5, 1.5)
+plot(mortality_rate ~ ownership_rate, data=gun,
+     pch=mych[as.integer(hdi_category)], 
+     cex=mycex[as.integer(hdi_category)],
+     xlab="Guns per 100 People",
+     ylab="Gun-related Deaths per 100,000 People")
+legend("topright", pch=mych, legend=paste(levels(gun$hdi_category), "HDI"))
+```
+```{r}
+lmall = lm(mortality_rate ~ ownership_rate, data=gun)
+lmhigh = lm(mortality_rate ~ ownership_rate, data=gun[gun$hdi_category=="very high", ])
+summary(lmall)
+summary(lmhigh)
+```
+
+Linear regression with all countries:
+```{r, echo=FALSE, results="asis"}
+stargazer::stargazer(lmall, type="html")
+```
+
+Linear regression with high HDI countries only:
+```{r, echo=FALSE, results="asis"}
+stargazer::stargazer(lmhigh, type="html")
+```
+
+
+
+

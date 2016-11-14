@@ -1,0 +1,107 @@
+---
+title: "Twitter myresada analysis"
+author: "Levi Waldron"
+date: "11/5/2016"
+output: pdf_document
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(twitteR)
+library(wordcloud)
+library(tm)
+```
+Analysis of all tweets containing the word "AR-15" between Jan 1 and Nov 5, 2016.
+
+```{r auth, cache=FALSE, echo=FALSE}
+load("~/Dropbox/misc/twittersecrets.rda")
+setup_twitter_oauth(consumer_key, consumer_secret, access_token, access_secret)
+```
+
+```{r myresquery, cache=TRUE, echo=FALSE}
+myres <- searchTwitter("ar-15", since="2016-01-01", until="2016-11-05", n=1000)
+```
+
+
+```{r myrescorpus, message=FALSE, warning=FALSE, echo=FALSE, cache=TRUE}
+#save text
+myres_text <- sapply(myres, function(x) x$getText())
+#create corpus
+myres_text_corpus <- Corpus(VectorSource(myres_text))
+#clean up
+myres_text_corpus <- tm_map(myres_text_corpus, content_transformer(function(x) iconv(x, to='ASCII', sub='byte')))
+myres_text_corpus <- tm_map(myres_text_corpus, content_transformer(tolower)) 
+myres_text_corpus <- tm_map(myres_text_corpus, removePunctuation)
+myres_text_corpus <- tm_map(myres_text_corpus, function(x)removeWords(x,stopwords()))
+```
+
+Analysis is based on `r length(myres_text)` tweets.
+
+# Word Cloud
+
+```{r myreswordcloud, fig.width=13, fig.height=13, echo=FALSE, cache=TRUE}
+par(cex=2)
+wordcloud(myres_text_corpus, min.freq=3)
+```
+
+# Retweet Network
+
+Shows who are the most influential Tweeters
+
+```{r net1, echo=FALSE}
+suppressPackageStartupMessages(library(dplyr))
+suppressPackageStartupMessages(library(ggplot2))
+suppressPackageStartupMessages(library(lubridate))
+suppressPackageStartupMessages(library(network))
+suppressPackageStartupMessages(library(sna))
+suppressPackageStartupMessages(library(qdap))
+d = twListToDF(myres)
+sp = split(d, d$isRetweet)
+orig = sp[['FALSE']]
+rt = mutate(sp[['TRUE']], sender = substr(text, 5, regexpr(':', text) - 1))
+# Split into retweets and original tweets
+sp = split(d, d$isRetweet)
+orig = sp[['FALSE']]
+# Extract the retweets and pull the original author's screenname
+rt = mutate(sp[['TRUE']], sender = substr(text, 5, regexpr(':', text) - 1))
+```
+
+```{r, echo=FALSE}
+# Adjust retweets to create an edgelist for network
+el = as.data.frame(cbind(sender = tolower(rt$sender), 
+                         receiver = tolower(rt$screenName)))
+el = count(el, sender, receiver) 
+rtnet = network(el, matrix.type = 'edgelist', directed = TRUE, 
+                ignore.eval = FALSE, names.eval = 'num')
+
+# Get names of only those who were retweeted to keep labeling reasonable
+vlabs = rtnet %v% 'vertex.names'
+vlabs[degree(rtnet, cmode = 'outdegree') == 0] = NA
+
+par(mar = c(0, 0, 3, 0))
+plot(rtnet, label = vlabs, label.pos = 5, label.cex = .8, 
+     vertex.cex = log(degree(rtnet)) + .5, 
+     edge.lwd = 'num', edge.col = 'gray70', main = 'myresata Retweet Network')
+```
+
+# Map
+
+```{r makedf, echo=FALSE}
+tweets.df = do.call("rbind",lapply(myres,as.data.frame))
+```
+
+There is not much geospatial data here - out of `r nrow(tweets.df)` tweets, only `r sum(!is.na(tweets.df$longitude))` have location data:
+
+```{r, echo=FALSE}
+res <- tweets.df[!is.na(tweets.df$longitude), ]
+knitr::kable(res[, c(1, 11, 15, 16)])
+```
+
+```{r map, echo=FALSE}
+suppressPackageStartupMessages(library(maps))
+#plots worldmap
+map('world')
+#plots tweets
+points(tweets.df$longitude,tweets.df$latitude, pch=20, cex=1, col="red")
+```
+
